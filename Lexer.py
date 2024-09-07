@@ -13,10 +13,10 @@ tokens = [
     ("OD", r'od\b'),
     ("REPEAT", r'rep\b'),
     ("PER", r'per\b'),
-    ("BLOCKED", r'isBlocked\b'),
-    ("ZERO", r'zero\b'),
+    ("BLOCKED", r'isBlocked\?'),
+    ("ZERO", r'zero\?'),
     ("NOT", r'not\b'),
-    ("ISFACING", r'isFacing\b'),
+    ("ISFACING", r'isFacing\?'),
     ("VAR", r'[a-zA-Z_][a-zA-Z0-9_]*'),
     ("NUMBER", r'\d+'),
     ("LBRACE", r'\{'),
@@ -28,7 +28,7 @@ tokens = [
     ("COMMA", r','),
     ("WHITESPACE", r'\s+'),
     ("COMMENT", r'//[^\n]*')
-    ,("?",r"\?")  
+    #,("?",r"\?")  
 ]
 
 
