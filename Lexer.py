@@ -12,6 +12,7 @@ tokens = [
     ("DO", r'do\b'),
     ("OD", r'od\b'),
     ("REPEAT", r'rep\b'),
+    ("TIMES",r'times\b'),
     ("PER", r'per\b'),
     ("BLOCKED", r'isBlocked\?'),
     ("ZERO", r'zero\?'),
