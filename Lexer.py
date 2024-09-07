@@ -13,10 +13,10 @@ tokens = [
     ("OD", r'od\b'),
     ("REPEAT", r'rep\b'),
     ("PER", r'per\b'),
-    ("BLOCKED", r'blocked\?\b'),
-    ("ZERO", r'zero\?\b'),
+    ("BLOCKED", r'isBlocked\b'),
+    ("ZERO", r'zero\b'),
     ("NOT", r'not\b'),
-    ("ISFACING", r'isFacing\?\b'),
+    ("ISFACING", r'isFacing\b'),
     ("VAR", r'[a-zA-Z_][a-zA-Z0-9_]*'),
     ("NUMBER", r'\d+'),
     ("LBRACE", r'\{'),
@@ -27,7 +27,8 @@ tokens = [
     ("EQUAL", r'='),
     ("COMMA", r','),
     ("WHITESPACE", r'\s+'),
-    ("COMMENT", r'//[^\n]*'),  
+    ("COMMENT", r'//[^\n]*')
+    ,("?",r"\?")  
 ]
 
 
@@ -47,3 +48,11 @@ def lexer(code):
                 break
         if not match:
             raise SyntaxError(f"Unexpected character: {code[pos]}")
+
+
+#Ejemplo:
+with open('prueba.txt', 'r') as file:
+    code = file.read()
+
+for token in lexer(code):
+    print(token)
