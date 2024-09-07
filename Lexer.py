@@ -51,8 +51,14 @@ def lexer(code):
 
 
 #Ejemplo:
-with open('prueba.txt', 'r') as file:
-    code = file.read()
 
-for token in lexer(code):
-    print(token)
+def lexer_funcioamiento(txt):
+    with open(txt, 'r') as file:
+        code = file.read()
+    lista_tokens=[]
+    for token in lexer(code):
+        print(token)
+        lista_tokens.append(tokens)
+    return lista_tokens
+
+lexer_funcioamiento("prueba.txt")
