@@ -1,195 +1,197 @@
 import re
+import Lexer as lex
 
-# Token definitions
-tokens = [
-    ("EXEC", r'EXEC\b'),
-    ("NEW_VAR", r'NEW VAR\b'),
-    ("NEW_MACRO", r'NEW MACRO\b'),
-    ("IF", r'if\b'),
-    ("ELSE", r'else\b'),
-    ("THEN", r'then\b'),
-    ("FI", r'fi\b'),
-    ("DO", r'do\b'),
-    ("OD", r'od\b'),
-    ("REPEAT", r'rep\b'),
-    ("TIMES", r'times\b'),
-    ("PER", r'per\b'),
-    ("BLOCKED", r'isBlocked\?'),
-    ("ZERO", r'zero\?'),
-    ("NOT", r'not\b'),
-    ("ISFACING", r'isFacing\?'),
-    ("VAR", r'[a-zA-Z_][a-zA-Z0-9_]*'),
-    ("NUMBER", r'\d+'),
-    ("LBRACE", r'\{'),
-    ("RBRACE", r'\}'),
-    ("LPAREN", r'\('),
-    ("RPAREN", r'\)'),
-    ("SEMICOLON", r';'),
-    ("EQUAL", r'='),
-    ("COMMA", r','),
-    ("WHITESPACE", r'\s+'),
-    ("COMMENT", r'//[^\n]*')
-]
+# Lists of valid commands
+commands_list_1 = ["walk", "jump", "drop", "pick", "grab", "letGo", "pop"]
+commands_list_2 = ["turnToMy", "turnToThe"]
+commands_list_3 = ["moves", "safeExe"]
 
-# Lexer function
-def lexer(code):
-    pos = 0
-    while pos < len(code):
-        match = None
-        for token_type, regex in tokens:
-            pattern = re.compile(regex)
-            match = pattern.match(code, pos)
-            if match:
-                text = match.group(0)
-                if token_type != "WHITESPACE" and token_type != "COMMENT":
-                    yield (token_type, text)
-                pos = match.end(0)
-                break
-        if not match:
-            raise SyntaxError(f"Unexpected character: {code[pos]}")
+valid_turnToMy_vars = ["left", "right", "back"]
+valid_turnToThe_vars = ["north", "south", "east", "west"]
+valid_moves_vars = ["forward", "right", "left", "backwards"]
 
-# Simplified parsing function
-def parse_tokens(tokens):
-    i = 0
-    length = len(tokens)
+def parse(tokens):
+    tokens = list(tokens)  # Convert the tokens iterator to a list for easy access
+    current_index = -1  # Start before the first token
 
-    def expect(expected_type):
-        nonlocal i
-        if i < length and tokens[i][0] == expected_type:
-            i += 1
+    def advance():
+        nonlocal current_index
+        current_index += 1
+        if current_index < len(tokens):
+            return tokens[current_index]
+        return None
+    
+    def goback():
+        nonlocal current_index
+        if current_index > 0:
+            current_index -= 1
+        return tokens[current_index] if current_index >= 0 else None
+
+    def current_token():
+        if 0 <= current_index < len(tokens):
+            return tokens[current_index]
+        return None
+
+    def get_token_slice(index, before=3, after=3):
+        start = max(0, index - before)
+        end = min(len(tokens), index + after + 1)
+        return tokens[start:end]
+
+    def expect(token_type, value=None):
+        token = current_token()
+        if token is None:
+            raise SyntaxError(f"Expected {token_type} but found end of input")
+        if token[0] != token_type or (value is not None and token[1] != value):
+            surrounding_tokens = get_token_slice(current_index)
+            raise SyntaxError(f"Expected {token_type}{' with value ' + value if value else ''} but found {token}. Context: {surrounding_tokens}")
+        advance()
+
+    def parse_condition():
+        if current_token()[0] == "NOT":
+            advance()
+            expect("LPAREN")
+            parse_condition()
+            expect("RPAREN")
+        elif current_token()[0] in ["BLOCKED", "ISFACING", "ZERO"]:
+            advance()
+            expect("LPAREN")
+            expect("VAR")
+            expect("RPAREN")
         else:
-            print(tokens[i-2][1])
-            print(tokens[i-1][1])
-            print(tokens[i][1])
-            print(tokens[i+1][1])
-            print(print(tokens[i+2][1]))
-            raise SyntaxError(f"Expected {expected_type} but found {tokens[i]}")
+            raise SyntaxError(f"Unexpected token: {current_token()}")
 
-    def parse_exec():
+    def parse_if_statement():
+        expect("IF")
+        parse_condition()
+        expect("THEN")
+        parse_block()
+        if current_token() and current_token()[0] == "ELSE":
+            advance()
+            parse_block()
+        expect("FI")
+        expect("SEMICOLON")
+
+    def parse_do_statement():
+        expect("DO")
+        parse_block()
+        expect("OD")
+
+    def parse_repeat_statement():
+        expect("REPEAT")
+        expect("VAR")  # or NUMBER
+        expect("TIMES")
+        parse_block()
+
+    def parse_exec_block():
         expect("EXEC")
-        expect("LBRACE")
-        while tokens[i][0] != "RBRACE":
-            parse_statement()
-        expect("RBRACE")
+        parse_block()
 
-    def parse_new_var():
+    def parse_var_declaration():
         expect("NEW_VAR")
         expect("VAR")
         expect("EQUAL")
         expect("NUMBER")
-        expect("SEMICOLON")
 
-    def parse_new_macro():
+    def parse_macro_declaration():
         expect("NEW_MACRO")
-        expect("VAR")  # Macro name
+        expect("VAR")
         expect("LPAREN")
-        while tokens[i][0] != "RPAREN":
+        while current_token() and current_token()[0] != "RPAREN":
             expect("VAR")
-            if tokens[i][0] == "COMMA":
-                expect("COMMA")
+            if current_token()[0] == "COMMA":
+                advance()
         expect("RPAREN")
-        expect("LBRACE")
-        while tokens[i][0] != "RBRACE":
-            parse_statement()
-        expect("RBRACE")
+        parse_block()
+
+    def parse_command(command):
+        if command in commands_list_1:
+            # Commands from list 1 must be followed by a number inside parentheses
+            expect("LPAREN")
+            expect("NUMBER")
+            expect("RPAREN")
+        elif command in commands_list_2:
+            # Commands from list 2 have different requirements
+            expect("LPAREN")
+            if command == "turnToMy":
+                #expect("VAR")
+                direction = current_token()[1]
+                if direction not in valid_turnToMy_vars:
+                    surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                    raise SyntaxError(f"Invalid direction '{direction}' for command 'turnToMy'. Expected one of {valid_turnToMy_vars}. Context: {surrounding_tokens}")
+            elif command == "turnToThe":
+                #expect("VAR")
+                direction = current_token()[1]
+                if direction not in valid_turnToThe_vars:
+                    surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                    raise SyntaxError(f"Invalid direction '{direction}' for command 'turnToThe'. Expected one of {valid_turnToThe_vars}. Context: {surrounding_tokens}")
+            advance()  # Move past the VAR
+            expect("RPAREN")
+        elif command in commands_list_3:
+            expect("LPAREN")
+            if command == "moves":
+                while current_token() and current_token()[0] != "RPAREN":
+                    token_type, token_value = current_token()
+                    if token_type == "VAR" and token_value in valid_moves_vars:
+                        advance()
+                    elif token_type == "COMMA":
+                        advance()
+                    else:
+                        surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                        raise SyntaxError(f"Invalid token '{current_token()}' in 'moves' command. Context: {surrounding_tokens}")        
+                    
+            elif command == "safeExe":
+                sub_command = current_token()[1]
+                expect("VAR")
+                if sub_command not in commands_list_1:
+                    surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                    raise SyntaxError(f"Invalid command '{sub_command}' for 'safeExe'. Expected one of {commands_list_1}. Context: {surrounding_tokens}")
+                parse_command(sub_command)  # Recursively parse the sub-command
+            expect("RPAREN")
 
     def parse_statement():
-        if tokens[i][0] == "IF":
-            parse_if()
-        elif tokens[i][0] == "DO":
-            parse_do()
-        elif tokens[i][0] == "REPEAT":
-            parse_repeat()
-        elif tokens[i][0] == "VAR":
-            if i + 1 < length and tokens[i + 1][0] == "EQUAL":
-                parse_assignment()
+        token = current_token()
+        if token is None:
+            return
+        if token[0] == "IF":
+            parse_if_statement()
+        elif token[0] == "DO":
+            parse_do_statement()
+        elif token[0] == "REPEAT":
+            parse_repeat_statement()
+        elif token[0] == "EXEC":
+            parse_exec_block()
+        elif token[0] == "NEW_VAR":
+            parse_var_declaration()
+        elif token[0] == "NEW_MACRO":
+            parse_macro_declaration()
+        elif token[0] == "VAR":
+            command = token[1]
+            if command in commands_list_1 or command in commands_list_2 or command in commands_list_3:
+                advance()
+                parse_command(command)
             else:
-                parse_function_call()
+                advance()
+                if current_token()[0] == "EQUAL":
+                    expect("EQUAL")
+                    expect("NUMBER")
+            expect("SEMICOLON")
         else:
-            raise SyntaxError(f"Unexpected statement start {tokens[i]}")
+            raise SyntaxError(f"Unexpected token in statement: {token}. Context: {get_token_slice(current_index)}")
 
-    def parse_assignment():
-        expect("VAR")
-        expect("EQUAL")
-        expect("NUMBER")
-        expect("SEMICOLON")
-
-    def parse_function_call():
-        expect("VAR")
-        expect("LPAREN")
-        while tokens[i][0] != "RPAREN":
-            if tokens[i][0] == "VAR" or tokens[i][0] == "NUMBER":
-                expect(tokens[i][0])
-            if tokens[i][0] == "COMMA":
-                expect("COMMA")
-        expect("RPAREN")
-        expect("SEMICOLON")
-
-    def parse_if():
-        expect("IF")
-        expect("NOT")
-        expect("LPAREN")
-        expect("BLOCKED")
-        expect("LPAREN")
-        expect("VAR")
-        expect("RPAREN")
-        expect("RPAREN")
-        expect("THEN")
+    def parse_block():
         expect("LBRACE")
-        while tokens[i][0] != "RBRACE":
-            parse_statement()
-        expect("RBRACE")
-        if tokens[i][0] == "ELSE":
-            expect("ELSE")
-            expect("LBRACE")
-            while tokens[i][0] != "RBRACE":
-                parse_statement()
-            expect("RBRACE")
-        expect("FI")
-
-    def parse_do():
-        expect("DO")
-        expect("NOT")
-        expect("ZERO")
-        expect("LPAREN")
-        expect("VAR")
-        expect("RPAREN")
-        expect("LBRACE")
-        while tokens[i][0] != "RBRACE":
-            parse_statement()
-        expect("RBRACE")
-        expect("OD")
-
-    def parse_repeat():
-        expect("REPEAT")
-        expect("VAR")
-        expect("TIMES")
-        expect("LBRACE")
-        while tokens[i][0] != "RBRACE":
+        while current_token() and current_token()[0] != "RBRACE":
             parse_statement()
         expect("RBRACE")
 
-    while i < length:
-        token_type = tokens[i][0]
-        if token_type == "EXEC":
-            parse_exec()
-        elif token_type == "NEW_VAR":
-            parse_new_var()
-        elif token_type == "NEW_MACRO":
-            parse_new_macro()
-        else:
-            raise SyntaxError(f"Unexpected token {tokens[i]}")
+    # Start parsing
+    advance()
+    while current_token():
+        parse_statement()
 
-    print("Parsing complete: no errors found.")
-
-# Function to execute lexer and parser
-def lexer_and_parser(file_path):
-    with open(file_path, 'r') as file:
-        code = file.read()
-    
-    tokens = list(lexer(code))
-    parse_tokens(tokens)
-
-# Run the lexer and parser on a sample file
-lexer_and_parser("prueba.txt")
-
+tokens = lex.lexer_funcioamiento("prueba.txt")
+try:
+    parse(tokens)
+    print("Code parsed successfully.")
+except SyntaxError as e:
+    print(f"Parsing failed: {e}")
