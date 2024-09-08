@@ -224,7 +224,7 @@ def parse(tokens):
     while current_token():
         parse_statement()
 
-tokens = lex.lexer_funcioamiento("prueba.txt")
+tokens = lex.lexer_funcioamiento("prueba3.txt")
 try:
     parse(tokens)
     print("Code parsed successfully.")

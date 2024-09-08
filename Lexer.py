@@ -29,6 +29,7 @@ tokens = [
     ("COMMA", r','),
     ("WHITESPACE", r'\s+'),
     ("COMMENT", r'//[^\n]*')
+    #("STRING", r'"[^"]*"')
     #,("?",r"\?")  
 ]
 
@@ -63,4 +64,4 @@ def lexer_funcioamiento(txt):
     #print(lista_tokens)
     return lista_tokens
 
-lexer_funcioamiento("prueba.txt")
+lexer_funcioamiento("prueba3.txt")

@@ -1,0 +1,34 @@
+NEW VAR steps = 5;
+
+NEW MACRO moveAndDrop(chips) {
+    walk(steps);
+    drop(chips);
+}
+
+EXEC {
+    if not(isBlocked?(left)) then {
+        turnToMy(left);
+        walk(1);
+    } else {
+        nop;
+    } fi;
+
+    safeExe(walk(steps));
+    moves(forward, right, left);
+    moveAndDrop(3);
+}
+
+NEW VAR rotate = 3;
+
+NEW MACRO recursiveMove(n) {
+    if not(isBlocked?(front)) then {
+        walk(n);
+        recursiveMove(n);
+    } else {
+        nop;
+    } fi;
+}
+
+EXEC {
+    recursiveMove(2);
+}
