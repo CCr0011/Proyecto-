@@ -73,12 +73,17 @@ def parse(tokens):
 
     def parse_do_statement():
         expect("DO")
+        parse_condition()
         parse_block()
         expect("OD")
 
     def parse_repeat_statement():
         expect("REPEAT")
-        expect("VAR")  # or NUMBER
+        if current_token()[0] == "NUMBER" or current_token()[0] == "VAR":
+                advance()
+        else:
+            surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+            raise SyntaxError(f"Invalid token following '{current_token()}'. Expected 'NUMBER' or 'VAR'. Context: {surrounding_tokens}")
         expect("TIMES")
         parse_block()
 
@@ -90,7 +95,11 @@ def parse(tokens):
         expect("NEW_VAR")
         expect("VAR")
         expect("EQUAL")
-        expect("NUMBER") #or VAR
+        if current_token()[0] == "NUMBER" or current_token()[0] == "VAR":
+                advance()
+        else:
+            surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+            raise SyntaxError(f"Invalid token following '{current_token()}'. Expected 'NUMBER' or 'VAR'. Context: {surrounding_tokens}")
     macros=[]
     def parse_macro_declaration():
         expect("NEW_MACRO")
