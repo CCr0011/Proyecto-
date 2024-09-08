@@ -1,259 +1,217 @@
+import re
 import Lexer as lex
 
+# Lists of valid commands
+commands_list_1 = ["walk", "jump", "drop", "pick", "grab", "letgo", "pop"]
+commands_list_2 = ["turnToMy", "turnToThe"]
+commands_list_3 = ["moves", "safeExe"]
 
-def init_Variables()->dict:
-    variables = {}
-    return variables
- 
-def add_Variable(variables, variable, valor, funciones)-> None:
-    funciones.pop(variable, None) 
-    variables[variable] = valor
+valid_turnToMy_vars = ["left", "right", "back"]
+valid_turnToThe_vars = ["north", "south", "east", "west"]
+valid_moves_vars = ["forward", "right", "left", "backwards"]
 
-def del_Variable(variables, variable):
-    variables.pop(variable, None)
+def parse(tokens):
+    tokens = list(tokens)  # Convert the tokens iterator to a list for easy access
+    current_index = -1  # Start before the first token
 
-def get_Value(variables, variable):
-    return variables[variable]
-
-def exist_Variable(variables, variable):
-    return variable in variables
-
-def init_Funciones():
-    funciones = {}
-    return funciones
-
-def add_Funcion(funciones, funcion, params, variables)-> None:
-    variables.pop(funcion, None)
-    funciones[funcion] = params
-
-def del_Funcion(funciones, funcion):
-    funciones.pop(funcion, None)
-
-def get_NumberParams(funciones, funcion):
-    n = len(funciones[funcion])
-    return n
-
-def get_Params(funciones, funcion):
-    return funciones[funcion]
-
-def exist_Funcion(funciones, funcion):
-    return funcion in funciones
-
-def init_Keywords()->list:
-    keywords = ["turnToMy", "turnToThe", "walk", "jump", "drop", "pick", "grab", "letGo", "pop",
-                "moves", "nop", "safeExe"]
-    return keywords
-
-
-
-def recorrer_Lista(lista, variables, keywords, funciones, 
-                    inside_if=False, inside_block=False, inside_func=False):
-    """
-    Hace el recorrido por la lista de tokens
-    """
-    correcto = True
-    newCommand = True
-    stop = False
+    def advance():
+        nonlocal current_index
+        current_index += 1
+        if current_index < len(tokens):
+            return tokens[current_index]
+        return None
     
-    if inside_block:
-        minimo_1Command = False
+    def goback():
+        nonlocal current_index
+        if current_index > 0:
+            current_index -= 1
+        return tokens[current_index] if current_index >= 0 else None
 
-    i = 0
-    while i < len(lista) and correcto and not stop:
-        
-        
-        if lista[i][0] == "EXEC":
-            if lista[i+1][0]!="LBRACE":
-                correcto=False
-                stop=True
-        
-        elif inside_block and lista[i][0] == ")":
-            i -= 1
-            stop = True
-            if not minimo_1Command:
-                correcto = False
-        
-        elif inside_func and lista[i][0] == "END":
-            i -= 1
-            stop = True
-        
-        elif lista[i][0] == "EXEC":
-            newCommand = True
-        
-        elif newCommand == True :
-            CommandName = lista[i]
-            correcto, termina_en = isCommand(CommandName, i, lista, variables, keywords, funciones)
-            if inside_block and not minimo_1Command and correcto:
-                minimo_1Command = True
-                
-            i = termina_en
-            newCommand = False
+    def current_token():
+        if 0 <= current_index < len(tokens):
+            return tokens[current_index]
+        return None
 
+    def get_token_slice(index, before=3, after=3):
+        start = max(0, index - before)
+        end = min(len(tokens), index + after + 1)
+        return tokens[start:end]
+
+    def expect(token_type, value=None):
+        token = current_token()
+        if token is None:
+            raise SyntaxError(f"Expected {token_type} but found end of input")
+        if token[0] != token_type or (value is not None and token[1] != value):
+            surrounding_tokens = get_token_slice(current_index)
+            raise SyntaxError(f"Expected {token_type}{' with value ' + value if value else ''} but found {token}. Context: {surrounding_tokens}")
+        advance()
+
+    def parse_condition():
+        if current_token()[0] == "NOT":
+            advance()
+            expect("LPAREN")
+            parse_condition()
+            expect("RPAREN")
+        elif current_token()[0] in ["BLOCKED", "ISFACING", "ZERO"]:
+            advance()
+            expect("LPAREN")
+            expect("VAR")
+            expect("RPAREN")
         else:
-            correcto = False
-        
-        #print("correcto:",correcto)
-        i+=1
+            raise SyntaxError(f"Unexpected token: {current_token()}")
 
-    return correcto, i
+    def parse_if_statement():
+        expect("IF")
+        parse_condition()
+        expect("THEN")
+        parse_block()
+        if current_token() and current_token()[0] == "ELSE":
+            advance()
+            parse_block()
+        expect("FI")
+        expect("SEMICOLON")
 
-def isCommand(CommandName, i, lista, variables, keywords, funciones):
-    "Verifica si el comando es correcto y regresa en qué parte de la lista termina este comando"
+    def parse_do_statement():
+        expect("DO")
+        parse_block()
+        expect("OD")
 
-    correcto = False
-    termina_en = i
+    def parse_repeat_statement():
+        expect("REPEAT")
+        expect("VAR")  # or NUMBER
+        expect("TIMES")
+        parse_block()
 
-    tipo1 = ["MOVE", "RIGHT", "LEFT", "ROTATE", "DROP", "FREE", "PICK", "POP"]
-    if CommandName in tipo1:
-        #print("T1. lista[i="+str(i)+"] " +lista[i])
-        if is_Type(variables, lista[i+1], "numero"):
-            termina_en = i+1
-            correcto = True
+    def parse_exec_block():
+        expect("EXEC")
+        parse_block()
 
-    elif CommandName == "LOOK":
-        #print("T2. lista[i="+str(i)+"] " +lista[i])
-        if is_Type(variables, lista[i+1], "direccion"):
-            termina_en = i+1
-            correcto = True
+    def parse_var_declaration():
+        expect("NEW_VAR")
+        expect("VAR")
+        expect("EQUAL")
+        expect("NUMBER") #or VAR
+    macros=[]
+    def parse_macro_declaration():
+        expect("NEW_MACRO")
+        macros.append(current_token()[1])
+        expect("VAR")
+        expect("LPAREN")
+        while current_token() and current_token()[0] != "RPAREN":
+            expect("VAR")
+            if current_token()[0] == "COMMA":
+                advance()
+        expect("RPAREN")
+        parse_block()
 
-    elif CommandName == "CHECK":
-        #print("T3. lista[i="+str(i)+"] " +lista[i])
-        if is_Type(variables, lista[i+1], "opcion"):
-            if is_Type(variables, lista[i+2], "numero"):
-                termina_en = i+2
-                correcto = True
-
-    elif CommandName == "BLOCKEDP" or CommandName == "NOP":
-        #print("T4. lista[i="+str(i)+"] " +lista[i])
-        termina_en = i
-        correcto = True
-    
-    elif CommandName == "DEFINE":
-        #print("T5. lista[i="+str(i)+"] " +lista[i])
-        if lista[i+1].islower():    
-            if is_Type(variables, lista[i+2], "numero"):
-                add_Variable(variables, lista[i+1], lista[i+2], funciones)
-                termina_en = i+2
-                correcto = True
+    def parse_command(command):
+        if command in commands_list_1:
+            # Commands from list 1 must be followed by a number inside parentheses
+            expect("LPAREN")
+            if current_token()[0] == "NUMBER" or current_token()[0] == "VAR":
+                advance()
             else:
-                print("Debe ingresar un número entero como valor de la variable")
+                surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                raise SyntaxError(f"Invalid token following '{command}'. Expected 'NUMBER' or 'VAR'. Context: {surrounding_tokens}")
+            expect("RPAREN")
+        elif command in commands_list_2:
+            # Commands from list 2 have different requirements
+            expect("LPAREN")
+            if command == "turnToMy":
+                #expect("VAR")
+                direction = current_token()[1]
+                if direction not in valid_turnToMy_vars:
+                    surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                    raise SyntaxError(f"Invalid direction '{direction}' for command 'turnToMy'. Expected one of {valid_turnToMy_vars}. Context: {surrounding_tokens}")
+            elif command == "turnToThe":
+                #expect("VAR")
+                direction = current_token()[1]
+                if direction not in valid_turnToThe_vars:
+                    surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                    raise SyntaxError(f"Invalid direction '{direction}' for command 'turnToThe'. Expected one of {valid_turnToThe_vars}. Context: {surrounding_tokens}")
+            advance()  # Move past the VAR
+            expect("RPAREN")
+        elif command in commands_list_3:
+            expect("LPAREN")
+            if command == "moves":
+                while current_token() and current_token()[0] != "RPAREN":
+                    token_type, token_value = current_token()
+                    if token_type == "VAR" and token_value in valid_moves_vars:
+                        advance()
+                    elif token_type == "COMMA":
+                        advance()
+                    else:
+                        surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                        raise SyntaxError(f"Invalid token '{current_token()}' in 'moves' command. Context: {surrounding_tokens}")        
+                    
+            elif command == "safeExe":
+                sub_command = current_token()[1]
+                expect("VAR")
+                if sub_command not in commands_list_1:
+                    surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                    raise SyntaxError(f"Invalid command '{sub_command}' for 'safeExe'. Expected one of {commands_list_1}. Context: {surrounding_tokens}")
+                parse_command(sub_command)  # Recursively parse the sub-command
+            expect("RPAREN")
+
+    def parse_statement():
+        token = current_token()
+        if token is None:
+            return
+        if token[0] == "IF":
+            parse_if_statement()
+        elif token[0] == "DO":
+            parse_do_statement()
+        elif token[0] == "REPEAT":
+            parse_repeat_statement()
+        elif token[0] == "EXEC":
+            parse_exec_block()
+        elif token[0] == "NEW_VAR":
+            parse_var_declaration()
+        elif token[0] == "NEW_MACRO":
+            parse_macro_declaration()
+        elif token[0] == "VAR":
+            command = token[1]
+            if command in commands_list_1 or command in commands_list_2 or command in commands_list_3:
+                advance()
+                parse_command(command)
+            elif command in macros:
+                # Handle macro invocation
+                advance()
+                expect("LPAREN")
+                while current_token() and current_token()[0] != "RPAREN":
+                    if current_token()[0] == "VAR":
+                        advance()
+                    elif current_token()[0] == "COMMA":
+                        advance()
+                    elif current_token()[0] == "NUMBER":
+                        advance()
+                    else:
+                        surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+                        raise SyntaxError(f"Invalid token '{current_token()}' in macro call. Context: {surrounding_tokens}")
+                expect("RPAREN")
+            else:
+                advance()
+                if current_token()[0] == "EQUAL":
+                    expect("EQUAL")
+                    expect("NUMBER")
+            expect("SEMICOLON")
         else:
-            print("El nombre de la variable debe ser un string en minúsculas")
-
-    elif CommandName == "IF":
-        #print("T6. lista[i="+str(i)+"] " +lista[i])
-        if lista[i+1] == "BLOCKEDP" or lista[i+2] == "!BLOCKEDP":
-            if lista[i+2] == "[":
-                correcto, j = recorrer_Lista(lista[i+3:], variables, keywords, funciones, inside_if=True)
-                termina_en = i+3+j
-        else:
-            print("La expresión del IF debe ser booleana")  
-
-    elif CommandName == "(":
-        #print("T7. lista[i="+str(i)+"] " +lista[i])
-
-        if lista[i+1] == "BLOCK":
-            correcto, j = recorrer_Lista(lista[i+2:], variables, keywords, funciones, inside_block=True)
-            termina_en = i+2+j
+            raise SyntaxError(f"Unexpected token in statement: {token}. Context: {get_token_slice(current_index)}")
         
-        elif lista[i+1] == "REPEAT":
-            if is_Type(variables, lista[i+2], "numero"):
-                if lista[i+3] == "[":
-                    correcto, j = recorrer_Lista(lista[i+4:], variables, keywords, funciones, inside_if=True)
-                    i += 4+j
-                    if correcto:
-                        i, correcto = ignore_Newlines(i+1, lista)
-                        if lista[i] == ")" and correcto:
-                            termina_en = i
+    def parse_block():
+        expect("LBRACE")
+        while current_token() and current_token()[0] != "RBRACE":
+            parse_statement()
+        expect("RBRACE")
 
-    elif CommandName == "TO":
-        #print("T8. lista[i="+str(i)+"] " +lista[i])
-        if lista[i+1] not in keywords:
-            j = 2
-            parametros = []
-            while ":" == lista[i+j][0]:  
-                parametros.append(lista[i+j])
-                add_Variable(variables, lista[i+j], None, funciones)
-                j += 1
-            add_Funcion(funciones, lista[i+1], parametros, variables)
-            i, correcto = ignore_Newlines(i+j, lista)
-            if lista[i] == "OUTPUT":
-                correcto, k = recorrer_Lista(lista[i+1:], variables, keywords, funciones, inside_func=True)
-                if correcto:
-                    termina_en = i+1+k
-                    correcto = True
-                    for variable in parametros:
-                        del_Variable(variables, variable)
+    # Start parsing
+    advance()
+    while current_token():
+        parse_statement()
 
-    else:
-        if CommandName in funciones:
-            n = get_NumberParams(funciones, CommandName)
-
-            params_validos = True
-            if i+n <= len(lista)-1:
-                for j in range(1, n+1):
-                    if not is_Type(variables, lista[i+j], "numero"):
-                        params_validos = False
-            else: 
-                params_validos = False
-
-            if params_validos:
-                correcto = True
-                termina_en = i+n
-            
-    return correcto, termina_en
-
-def is_Type(variables, string, tipo):
-    """
-    Verifica si es del tipo correcto
-    """
-    es_tipo = False
-    if tipo == "numero":
-        if string.isdigit() or (exist_Variable(variables,string) and (get_Value(variables,string) == None or get_Value(variables,string).isdigit())):
-            es_tipo = True
-    
-    elif tipo == "direccion":
-        direcciones = ["N", "S", "W", "E"]
-        if string in direcciones or (exist_Variable(variables,string) and (get_Value(variables,string) in direcciones or get_Value(variables,string) == None)):
-            es_tipo = True
-    
-    elif tipo == "opcion":
-        opciones = ["C", "B"]
-        if string in opciones or (exist_Variable(variables,string) and (get_Value(variables,string) in opciones or get_Value(variables,string) == None)):
-            es_tipo = True
-        
-    return es_tipo
-
-
-def ignore_Newlines(i, lista):
-    """
-    i: posición desde la cual debe empezar a ignorar los newlines (primer newline)
-    retorna: posición del último newline
-    """
-    correcto = True
-    if lista[i] == "NEWLINE":
-        while lista[i+1] == "NEWLINE":
-            i+=1
-            if i == len(lista)-1:
-                correcto = False
-                break
-        i += 1          
-
-    return i, correcto
-
-def iniciar_Programa():
-
-    variables = init_Variables()
-    keywords = init_Keywords()
-    funciones = init_Funciones()
-
-    tokens = lex.lexer_funcioamiento("prueba.txt")
-
-    #resultado, _ = recorrer_Lista(tokens, variables, keywords, funciones)
-    #if resultado:
-    #    print("The syntax is CORRECT.")
-    ##else:
-    #    print("The syntax is INCORRECT.")
-
-iniciar_Programa()
-
+tokens = lex.lexer_funcioamiento("prueba.txt")
+try:
+    parse(tokens)
+    print("Code parsed successfully.")
+except SyntaxError as e:
+    print(f"Parsing failed: {e}")
