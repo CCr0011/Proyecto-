@@ -1,0 +1,51 @@
+EXEC {
+    if not(isBlocked?( left )) then { turnToMy ( left ) walk(1); } else {  // Missing semicolon after `turnToMy ( left )`
+        nop ; 
+    fi;
+}
+
+EXEC {
+    safeExe (walk);  // Missing parentheses in `walk` command
+    moves (left ,left , forward , right , backwards);  // Typo: `backwards` should be `backward`
+}
+
+NEW VAR rotate = 3;
+NEW MACRO foo (c p)  // Missing comma between `c` and `p`
+{
+    drop(c)
+    letgo(p);
+    walk(rotate);
+}
+
+EXEC { foo (1 3); }  // Missing comma between `1` and `3`
+
+NEW VAR one= 1;
+
+NEW MACRO goend ()
+{
+    if not (isBlocked?( front ))
+    then { walk (one; goend ()); }  // Mismatched parentheses
+    else { nop; }
+    fi;
+}
+
+NEW MACRO fill ()
+{
+    rep roomForChips times
+    { 
+        if not (zero?(myChips)) then { drop(1) ;} else { nop; } fi;
+    }  // Missing `;` after `fi`
+}
+
+NEW MACRO fill1 ()
+{
+    do not zero?( roomForChips )  // Incorrect syntax for `do while` loop
+    { 
+        if not (zero?( myChips )) then { drop(1) ;} else { nop; } fi ;
+    } od;
+}
+
+NEW MACRO grabAll ()
+{
+    grab ( balloonsHere );  // Incorrect variable name `balloonsHere`
+}

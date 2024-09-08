@@ -58,7 +58,8 @@ def parse(tokens):
             expect("VAR")
             expect("RPAREN")
         else:
-            raise SyntaxError(f"Unexpected token: {current_token()}")
+            surrounding_tokens = get_token_slice(current_index, before=3, after=3)
+            raise SyntaxError(f"Invalid token following '{current_token()}'. Context: {surrounding_tokens}")
 
     def parse_if_statement():
         expect("IF")
@@ -73,9 +74,12 @@ def parse(tokens):
 
     def parse_do_statement():
         expect("DO")
-        parse_condition()
+        if current_token()[0] =="NOT":
+            advance()
+            parse_condition()
         parse_block()
         expect("OD")
+        expect("SEMICOLON")
 
     def parse_repeat_statement():
         expect("REPEAT")
@@ -204,6 +208,8 @@ def parse(tokens):
                     expect("EQUAL")
                     expect("NUMBER")
             expect("SEMICOLON")
+        elif token[0]=="SEMICOLON":
+            advance()
         else:
             raise SyntaxError(f"Unexpected token in statement: {token}. Context: {get_token_slice(current_index)}")
         
