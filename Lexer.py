@@ -58,8 +58,9 @@ def lexer_funcioamiento(txt):
         code = file.read()
     lista_tokens=[]
     for token in lexer(code):
-        print(token)
-        lista_tokens.append(tokens)
+        #print(token)
+        lista_tokens.append(token)
+    #print(lista_tokens)
     return lista_tokens
 
 lexer_funcioamiento("prueba.txt")

@@ -1,388 +1,259 @@
 import Lexer as lex
 
-robot_commands: list = ['turnToMy','turntoThe',"walk",'jump',"drop", 'pick', 'grab',
-                        'letGo', 'pop', 'moves', 'nop',"safeExe"]
+
+def init_Variables()->dict:
+    variables = {}
+    return variables
+ 
+def add_Variable(variables, variable, valor, funciones)-> None:
+    funciones.pop(variable, None) 
+    variables[variable] = valor
+
+def del_Variable(variables, variable):
+    variables.pop(variable, None)
+
+def get_Value(variables, variable):
+    return variables[variable]
+
+def exist_Variable(variables, variable):
+    return variable in variables
+
+def init_Funciones():
+    funciones = {}
+    return funciones
+
+def add_Funcion(funciones, funcion, params, variables)-> None:
+    variables.pop(funcion, None)
+    funciones[funcion] = params
+
+def del_Funcion(funciones, funcion):
+    funciones.pop(funcion, None)
+
+def get_NumberParams(funciones, funcion):
+    n = len(funciones[funcion])
+    return n
+
+def get_Params(funciones, funcion):
+    return funciones[funcion]
+
+def exist_Funcion(funciones, funcion):
+    return funcion in funciones
+
+def init_Keywords()->list:
+    keywords = ["turnToMy", "turnToThe", "walk", "jump", "drop", "pick", "grab", "letGo", "pop",
+                "moves", "nop", "safeExe"]
+    return keywords
 
 
-class Variable:
-    def __init__(self, name, value):
-        self.name:  str = name
-        self.value: str = value
 
-    def modify_name(self, n: str):
-        self.name = n
-
-    def modify_value(self, v: str):
-        self.value = v
-
-
-def is_int(s: str) -> bool:
-    try:
-        int(s)
-        return True
-    except ValueError:
-        return False
-
-
-def is_variable(value: str, program_variables: list) -> bool:
-    for v in program_variables:
-        if v.name == value:
-            return True
-    return False
-
-
-def is_robot_command(value: str) -> bool:
-    """ 
-    Check if command is on robot commands group
+def recorrer_Lista(lista, variables, keywords, funciones, 
+                    inside_if=False, inside_block=False, inside_func=False):
     """
-    return value in robot_commands
-
-
-def parse(program: str) -> bool:
+    Hace el recorrido por la lista de tokens
     """
-    Returns a bool indicating if the program is valid on the robot syntax.
+    correcto = True
+    newCommand = True
+    stop = False
+    
+    if inside_block:
+        minimo_1Command = False
+
+    i = 0
+    while i < len(lista) and correcto and not stop:
+        
+        
+        if lista[i][0] == "EXEC":
+            if lista[i+1][0]!="LBRACE":
+                correcto=False
+                stop=True
+        
+        elif inside_block and lista[i][0] == ")":
+            i -= 1
+            stop = True
+            if not minimo_1Command:
+                correcto = False
+        
+        elif inside_func and lista[i][0] == "END":
+            i -= 1
+            stop = True
+        
+        elif lista[i][0] == "EXEC":
+            newCommand = True
+        
+        elif newCommand == True :
+            CommandName = lista[i]
+            correcto, termina_en = isCommand(CommandName, i, lista, variables, keywords, funciones)
+            if inside_block and not minimo_1Command and correcto:
+                minimo_1Command = True
+                
+            i = termina_en
+            newCommand = False
+
+        else:
+            correcto = False
+        
+        #print("correcto:",correcto)
+        i+=1
+
+    return correcto, i
+
+def isCommand(CommandName, i, lista, variables, keywords, funciones):
+    "Verifica si el comando es correcto y regresa en qué parte de la lista termina este comando"
+
+    correcto = False
+    termina_en = i
+
+    tipo1 = ["MOVE", "RIGHT", "LEFT", "ROTATE", "DROP", "FREE", "PICK", "POP"]
+    if CommandName in tipo1:
+        #print("T1. lista[i="+str(i)+"] " +lista[i])
+        if is_Type(variables, lista[i+1], "numero"):
+            termina_en = i+1
+            correcto = True
+
+    elif CommandName == "LOOK":
+        #print("T2. lista[i="+str(i)+"] " +lista[i])
+        if is_Type(variables, lista[i+1], "direccion"):
+            termina_en = i+1
+            correcto = True
+
+    elif CommandName == "CHECK":
+        #print("T3. lista[i="+str(i)+"] " +lista[i])
+        if is_Type(variables, lista[i+1], "opcion"):
+            if is_Type(variables, lista[i+2], "numero"):
+                termina_en = i+2
+                correcto = True
+
+    elif CommandName == "BLOCKEDP" or CommandName == "NOP":
+        #print("T4. lista[i="+str(i)+"] " +lista[i])
+        termina_en = i
+        correcto = True
+    
+    elif CommandName == "DEFINE":
+        #print("T5. lista[i="+str(i)+"] " +lista[i])
+        if lista[i+1].islower():    
+            if is_Type(variables, lista[i+2], "numero"):
+                add_Variable(variables, lista[i+1], lista[i+2], funciones)
+                termina_en = i+2
+                correcto = True
+            else:
+                print("Debe ingresar un número entero como valor de la variable")
+        else:
+            print("El nombre de la variable debe ser un string en minúsculas")
+
+    elif CommandName == "IF":
+        #print("T6. lista[i="+str(i)+"] " +lista[i])
+        if lista[i+1] == "BLOCKEDP" or lista[i+2] == "!BLOCKEDP":
+            if lista[i+2] == "[":
+                correcto, j = recorrer_Lista(lista[i+3:], variables, keywords, funciones, inside_if=True)
+                termina_en = i+3+j
+        else:
+            print("La expresión del IF debe ser booleana")  
+
+    elif CommandName == "(":
+        #print("T7. lista[i="+str(i)+"] " +lista[i])
+
+        if lista[i+1] == "BLOCK":
+            correcto, j = recorrer_Lista(lista[i+2:], variables, keywords, funciones, inside_block=True)
+            termina_en = i+2+j
+        
+        elif lista[i+1] == "REPEAT":
+            if is_Type(variables, lista[i+2], "numero"):
+                if lista[i+3] == "[":
+                    correcto, j = recorrer_Lista(lista[i+4:], variables, keywords, funciones, inside_if=True)
+                    i += 4+j
+                    if correcto:
+                        i, correcto = ignore_Newlines(i+1, lista)
+                        if lista[i] == ")" and correcto:
+                            termina_en = i
+
+    elif CommandName == "TO":
+        #print("T8. lista[i="+str(i)+"] " +lista[i])
+        if lista[i+1] not in keywords:
+            j = 2
+            parametros = []
+            while ":" == lista[i+j][0]:  
+                parametros.append(lista[i+j])
+                add_Variable(variables, lista[i+j], None, funciones)
+                j += 1
+            add_Funcion(funciones, lista[i+1], parametros, variables)
+            i, correcto = ignore_Newlines(i+j, lista)
+            if lista[i] == "OUTPUT":
+                correcto, k = recorrer_Lista(lista[i+1:], variables, keywords, funciones, inside_func=True)
+                if correcto:
+                    termina_en = i+1+k
+                    correcto = True
+                    for variable in parametros:
+                        del_Variable(variables, variable)
+
+    else:
+        if CommandName in funciones:
+            n = get_NumberParams(funciones, CommandName)
+
+            params_validos = True
+            if i+n <= len(lista)-1:
+                for j in range(1, n+1):
+                    if not is_Type(variables, lista[i+j], "numero"):
+                        params_validos = False
+            else: 
+                params_validos = False
+
+            if params_validos:
+                correcto = True
+                termina_en = i+n
+            
+    return correcto, termina_en
+
+def is_Type(variables, string, tipo):
     """
-    # Ignore spaces, newlines, and tabulators.
-    commands = program.split()
+    Verifica si es del tipo correcto
+    """
+    es_tipo = False
+    if tipo == "numero":
+        if string.isdigit() or (exist_Variable(variables,string) and (get_Value(variables,string) == None or get_Value(variables,string).isdigit())):
+            es_tipo = True
+    
+    elif tipo == "direccion":
+        direcciones = ["N", "S", "W", "E"]
+        if string in direcciones or (exist_Variable(variables,string) and (get_Value(variables,string) in direcciones or get_Value(variables,string) == None)):
+            es_tipo = True
+    
+    elif tipo == "opcion":
+        opciones = ["C", "B"]
+        if string in opciones or (exist_Variable(variables,string) and (get_Value(variables,string) in opciones or get_Value(variables,string) == None)):
+            es_tipo = True
+        
+    return es_tipo
 
-    # Temporal values for manage verification.
-    parenthesis_count = 0
-    program_variables: list[Variable] = []
-    program_functions: list[str] = {'': []}
-    new_function: str = ''
-    uncounted_params = 0
-    is_defining = False
-    variable_named = False
-    new_variable = Variable('', '')
-    robot_command_started = False
-    is_moving = False
-    is_turning = False
-    is_facing = False
-    # 0: not started, 1: picking or putting, 2: Ballons or Chips, 3: Number or Variable.
-    is_picking_or_putting = 0
-    # 0: not started, 1: move-dir, 2: Number or Variable, 3: Direction.
-    is_moving_dir = 0
-    is_running_dirs = False
-    # 0: not started, 1: move-face, 2: Number or Variable, 3: Orientation.
-    is_moving_face = 0
-    is_assigning = False
-    conditional_started = False
-    # 0: not started, 1: facing-p, 2: can-put-p, 3: can-pick-p, 4: can-move-p, not cond.
-    bool_expression_case = 0
-    is_repeat_iteration = False
-    # 0: defun, 1: name, 2: params, 3: Block.
-    is_defining_function = 0
 
-    for c in commands:
-        stop_iteration = False
-        # Check if that parenthesis are balanced.
-        if (parenthesis_count < 0):
-            return False
+def ignore_Newlines(i, lista):
+    """
+    i: posición desde la cual debe empezar a ignorar los newlines (primer newline)
+    retorna: posición del último newline
+    """
+    correcto = True
+    if lista[i] == "NEWLINE":
+        while lista[i+1] == "NEWLINE":
+            i+=1
+            if i == len(lista)-1:
+                correcto = False
+                break
+        i += 1          
 
-        while '(' in c:
-            parenthesis_count += 1
-            c = c.replace('(', '', 1)
+    return i, correcto
 
-        while ')' in c:
-            parenthesis_count -= 1
-            c = c.replace(')', '', 1)
-            if is_defining_function == 2:
-                is_defining_function = 3
-                program_functions[new_function].append(c.replace(')', ''))
-                stop_iteration = True
-        if stop_iteration == True:
-            continue
+def iniciar_Programa():
 
-        if len(c) == 0:
-            continue
+    variables = init_Variables()
+    keywords = init_Keywords()
+    funciones = init_Funciones()
 
-        # Validate function definition.
-        if c == flow_commands[6]:
-            is_defining_function = 1
-            continue
+    tokens = lex.lexer_funcioamiento("prueba.txt")
 
-        if is_defining_function == 1:
-            new_function = c
-            program_functions[new_function] = []
-            is_defining_function = 2
-            continue
+    #resultado, _ = recorrer_Lista(tokens, variables, keywords, funciones)
+    #if resultado:
+    #    print("The syntax is CORRECT.")
+    ##else:
+    #    print("The syntax is INCORRECT.")
 
-        if is_defining_function == 2:
-            program_functions[new_function].append(c)
-            continue
-
-        if is_defining_function == 3:
-            is_defining_function = 0
-            if c == "facing-p":
-                bool_expression_case = 1
-                continue
-            if c == "can-put-p":
-                bool_expression_case = 2
-                continue
-            if c == "can-pick-p":
-                bool_expression_case = 3
-                continue
-            if c == "can-move-p":
-                bool_expression_case = 4
-                continue
-            if c == 'not':
-                bool_expression_case = 5
-                continue
-            if is_variable(c, program_variables) or c in program_functions or c in program_functions[new_function]:
-                continue
-
-        # RepeatTimes command.
-        if c == flow_commands[5]:
-            is_repeat_iteration = True
-            continue
-
-        if is_repeat_iteration:
-            if is_int(c) or is_variable(c, program_variables) or c in program_functions or c in program_functions[new_function]:
-                is_repeat_iteration = False
-                continue
-            else:
-                return False
-
-        # Repeat command.
-        if c == flow_commands[4]:
-            conditional_started = True
-            continue
-
-        # Verify conditionals.
-        if bool_expression_case == 5:  # Recursive special case.
-            conditional_started = True
-
-        if conditional_started:
-            conditional_started = False
-            if c == "facing-p":
-                bool_expression_case = 1
-                continue
-            if c == "can-put-p":
-                bool_expression_case = 2
-                continue
-            if c == "can-pick-p":
-                bool_expression_case = 3
-                continue
-            if c == "can-move-p":
-                bool_expression_case = 4
-                continue
-            if c == 'not':
-                bool_expression_case = 5
-                continue
-            if is_variable(c, program_variables) or c in program_functions[new_function]:
-                bool_expression_case = 0
-                continue
-            if c in program_functions:
-                bool_expression_case = 0
-                # Calling function {c}.
-                new_function = c
-                for param in program_functions[c]:
-                    if param:
-                        uncounted_params += 1
-                continue
-            else:
-                return False
-
-        if bool_expression_case == 1:
-            if c == ":north" or c == ":south" or c == ":east" or c == ":west":
-                bool_expression_case = 0
-                continue
-            else:
-                return False
-
-        if bool_expression_case == 2:
-            if c == "balloons" or c == "chips":
-                bool_expression_case = 2.5  # Intermediary state.
-                continue
-            else:
-                return False
-        elif bool_expression_case == 2.5:
-            if is_int(c) or is_variable(c, program_variables) or c in program_functions or c in program_functions[new_function]:
-                bool_expression_case = 0
-                continue
-            else:
-                return False
-
-        if bool_expression_case == 3:
-            if c == "balloons" or c == "chips":
-                bool_expression_case = 3.5  # Intermediary state.
-                continue
-            else:
-                return False
-        elif bool_expression_case == 3.5:
-            if is_int(c) or is_variable(c, program_variables) or c in program_functions or c in program_functions[new_function]:
-                bool_expression_case = 0
-                continue
-            else:
-                return False
-
-        if bool_expression_case == 4:
-            if c == ":north" or c == ":south" or c == ":east" or c == ":west":
-                bool_expression_case = 0
-                continue
-            else:
-                return False
-
-        # Introduction of if statement.
-        if c == flow_commands[3]:
-            conditional_started = True
-            continue
-
-        # Assign a value to variable.
-        if is_assigning:
-            if variable_named:
-                if is_int(c):
-                    for x in program_variables:
-                        if x.name == new_variable.name:
-                            x.modify_value(c)
-                            variable_named = False
-                            is_assigning = False
-                            break
-                    continue
-                else:
-                    return False
-            for x in program_variables:
-                if x.name == c:
-                    new_variable.modify_name(c)
-                    x.modify_name(c)
-                    variable_named = True
-                    break
-            continue
-
-        if c == flow_commands[1]:
-            is_assigning = True
-            continue
-
-        # Usage of previous defined functions.
-        if c in program_functions:
-            # Calling function {c}.
-            new_function = c
-            for param in program_functions[c]:
-                if param:
-                    uncounted_params += 1
-            continue
-
-        if uncounted_params > 0:
-            uncounted_params -= 1
-            continue
-
-        # Definition of a variable.
-        if is_defining:
-            if variable_named:
-                if is_int(c):
-                    new_variable.modify_value(c)
-                    program_variables.append(
-                        Variable(new_variable.name, new_variable.value))
-                    variable_named = False
-                    is_defining = False
-                    continue
-                else:
-                    return False
-            variable_name = c
-            new_variable.modify_name(variable_name)
-            variable_named = True
-            continue
-
-        if c == flow_commands[0]:
-            is_defining = True
-            continue
-
-        # Commands that can be executed on the robot.
-        if is_moving:
-            is_moving = False
-            if is_int(c) or is_variable(c, program_variables) or c in program_functions or c in program_functions[new_function]:
-                continue
-            else:
-                return False
-
-        if is_turning:
-            is_turning = False
-            if c == ":left" or c == ":right" or c == ":around":
-                continue
-            else:
-                return False
-
-        if is_facing:
-            is_facing = False
-            if c == ":north" or c == ":south" or c == ":east" or c == ":west":
-                continue
-            else:
-                return False
-
-        if is_picking_or_putting == 1:
-            if c == "Balloons" or c == "Chips":
-                is_picking_or_putting = 2
-                continue
-            else:
-                return False
-        elif is_picking_or_putting == 2:
-            if is_int(c) or is_variable(c, program_variables) or c in program_functions or c in program_functions[new_function]:
-                is_picking_or_putting = 0
-                continue
-            else:
-                return False
-
-        if is_moving_dir == 1:
-            if is_int(c) or is_variable(c, program_variables) or c in program_functions or c in program_functions[new_function]:
-                is_moving_dir = 2
-                continue
-            else:
-                return False
-        elif is_moving_dir == 2:
-            if c == ":front" or c == ":back" or c == ":left" or c == ":right":
-                is_moving_dir = 0
-                continue
-            else:
-                return False
-
-        if is_running_dirs:
-            if c == ":front" or c == ":back" or c == ":left" or c == ":right":
-                running_was_direction = True
-                continue
-            elif running_was_direction:
-                is_running_dirs = False
-            else:
-                return False
-
-        if is_moving_face == 1:
-            if is_int(c) or is_variable(c, program_variables) or c in program_functions or c in program_functions[new_function]:
-                is_moving_face = 2
-                continue
-            else:
-                return False
-        elif is_moving_face == 2:
-            if c == ":north" or c == ":south" or c == ":east" or c == ":west":
-                is_moving_face = 0
-                continue
-            else:
-                return False
-
-        # Verify if the command is a new robot command.
-        robot_command_started = is_robot_command(c)
-        if robot_command_started:
-            if c == robot_commands[0]:
-                is_moving = True
-            if c == robot_commands[1]:
-                is_turning = True
-            if c == robot_commands[2]:
-                is_facing = True
-            if c == robot_commands[3] or c == robot_commands[4]:
-                is_picking_or_putting = 1
-            if c == robot_commands[5]:
-                is_moving_dir = 1
-            if c == robot_commands[6]:
-                is_running_dirs = True
-            if c == robot_commands[7]:
-                is_moving_face = 1
-            continue
-
-        # Skip command.
-        if c == flow_commands[2]:
-            continue
-
-        # A command doesn't satisfy the rules.
-        return False
-
-    # All commands satisfy the rules.
-    return True
+iniciar_Programa()
 
